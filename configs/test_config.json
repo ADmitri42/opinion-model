@@ -1,0 +1,8 @@
+{
+    "networks": {
+        "path": "networks/k=4"
+    },
+    "suggestability": [3],
+    "initial_probability": "np.linspace(0, 0.5, 3)",
+    "result_dir": "data/test_calc"
+}
