@@ -1,4 +1,5 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict, Any
+from enum import Enum
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -7,63 +8,71 @@ from .constants import OPINION_KEY, SUGGESTABILITY_KEY
 from .opinion import Opinion
 
 
-def generate_er_graph(
-        N: int,
-        avg_k: float,
+class Model(Enum):
+    erdos_renyi = 'erdos-renyi'
+    barabasi_alber = 'barabasi-alber'
+    random_regular_graph = 'random-regular-graph'
+
+
+def generate_graph(
+        model: Model,
+        model_params: Dict[str, Any],
         minus_opinion_prob: float,
         suggestability: float,
         *,
-        one_component: bool = False,
-        keep_n_nodes: bool = False,
-        opinion_key: str=OPINION_KEY,
-        suggestability_key: str=SUGGESTABILITY_KEY,
-        max_iters: int = 1_000,
+        one_component: bool = True,
+        opinion_key: str = OPINION_KEY,
+        suggestability_key: str = SUGGESTABILITY_KEY,
         **kwargs
-    ) -> nx.Graph:
-    """ Generates Erdos-Renyi connected graph with some initial distribution of opinions.
+        ) -> nx.Graph:
+    """ Generates Erdos-Renyi connected graph
+    with some initial distribution of opinions.
     Only biggest component remain.
 
     Parameters:
     -----------
-    N: int
-        number of nodes in network
-    avg_k: float
-        average number of neigbors
+    model: Model
+        model of the network
+    model_params: dict
+        parameters of the network
     minus_opinion_prob: float
         probability of the node to have sigma_{-} opinion
     suggestability: float
         suggestability of the nodes
     one_component: bool
         leave only one component
-    keep_n_nodes: bool
-        if only one component required, keep generating graphs until it has only one component
     opinion_key: str
         name of the opinion key
     suggestability_key: str
         name of the suggestability key
-    max_iters: int
-        max number of iterations
-    kwargs: other parameters for networkx.erdos_renyi_graph
+    kwargs: other parameters for the generator functions
 
     Return:
     -------
     networkx.Graph - random  graph
     """
-    keep_n_nodes = one_component and keep_n_nodes
-    p = avg_k / N
-    G = nx.erdos_renyi_graph(N, p, **kwargs)
-    if keep_n_nodes:
-        for _ in range(max_iters):
-            if len(list(nx.connected_components(G))) == 1:
-                break
-            G = nx.erdos_renyi_graph(N, p, **kwargs)
-    elif one_component:
+
+    if model == Model.erdos_renyi:
+        avg_k = model_params.pop('avg_k', -1)
+        if avg_k > 0:
+            model_params['p'] = avg_k / model_params['n']
+        graph_gen_func = nx.erdos_renyi_graph
+    elif model == Model.barabasi_alber:
+        graph_gen_func = nx.barabasi_albert_graph
+    elif model == Model.random_regular_graph:
+        graph_gen_func = nx.random_regular_graph
+    else:
+        raise ValueError(f'Unknown model {model}')
+
+    G = graph_gen_func(**model_params, **kwargs)
+    if one_component:
         G = G.subgraph(list(nx.connected_components(G))[0])
 
     opinions = generate_opinions(G, minus_opinion_prob)
     nx.set_node_attributes(G, opinions, name=opinion_key)
     nx.set_node_attributes(G, suggestability, name=suggestability_key)
     return G
+
 
 def generate_opinions(G: nx.Graph, minus_opinion_prob: float):
     nodes = list(G.nodes)

@@ -1,4 +1,5 @@
-from typing import Tuple
+from typing import Tuple, Dict, Any
+from enum import Enum
 import os
 import sys
 import json
@@ -9,68 +10,57 @@ import pandas as pd
 import networkx as nx
 from tqdm import tqdm
 
-
-from opinion_model import (
-    generate_er_graph, describe_graph,
-)
+from opinion_model.utils import Model, generate_graph, describe_graph
 
 BASE_SUGGESTABILITY = 1
 
 
-def parse_args(argv) -> Tuple[str, int, int, float, int]:
-    if len(argv) not in [1, 5]:
-        print(f'{sys.argv[0]} [config_file] [path n_nodes n_networks avg_k seed]')
+def parse_config(argv) -> Tuple[Model, str, int, int, int, Dict[str, Any]]:
+    if len(argv) != 1:
+        print(f'{sys.argv[0]} [config_file]')
+        print('where model one of\nerdos-renyi\nbarabasi-alber\n')
         exit(0)
-    if len(argv) == 1:
-        with open(argv[0], 'w') as f:
-            config = json.load(f)
-        path = config['path']
-        n_nodes = config['n_nodes']
-        n_networks = config['n_networks']
-        avg_k = config['avg_k']
-        seed = config['seed']
-    else:
-        path = argv[0]
-        n_nodes = int(argv[1])
-        n_networks = int(argv[2])
-        avg_k = float(argv[3])
-        seed = int(argv[4])
-    return path, n_nodes, n_networks, avg_k, seed
+    with open(argv[0]) as f:
+        config = json.load(f)
+    model = Model(config['model'])
+    path = config['path']
+    n_networks = config['n_networks']
+    seed = config['seed']
+    model_params = config['model_params']
+    return model, path, n_networks, seed, model_params
 
 
-def generate_networks_in_dir(path, n_nodes, n_newtworks, avg_k, seed):
+def generate_networks_in_dir(path, model, model_params, n_networks, seed):
     f = 0.4
     np.random.seed(seed)
-    seeds = np.random.randint(1, 100005, size=int(n_newtworks * 1.1))
+    seeds = np.random.randint(1, 100005, size=int(n_networks * 1.1))
 
     networks = []
     data = []
     for i, s in enumerate(tqdm(seeds)):
-        G = generate_er_graph(
-            n_nodes,
-            avg_k,
-            f,
-            BASE_SUGGESTABILITY,
-            one_component=True, keep_n_nodes=False, seed=int(s)
+        G = generate_graph(
+            model, model_params,
+            f, BASE_SUGGESTABILITY,
+            one_component=True, seed=int(s)
         )
         if len(G) < 10:
             continue
 
         networks.append(G)
-        # ks.append(average_k(G))
         description = describe_graph(G)
         description['n'] = i
         data.append(description)
         nx.write_graphml(G, os.path.join(path, f'network_{i}.graphml'))
-        if len(networks) >= n_newtworks:
+        if len(networks) >= n_networks:
             break
     graph_stat = pd.DataFrame(data)
     graph_stat.to_csv(os.path.join(path, 'info.csv'))
+
     config = {
-        'n_nodes': n_nodes,
-        'n_networks': n_newtworks,
-        'avg_k': avg_k,
-        'seed': seed
+        'model': str(model),
+        'n_networks': n_networks,
+        'seed': seed,
+        'model_params': model_params
     }
     with open(os.path.join(path, 'config.json'), 'w') as fp:
         json.dump(config, fp)
@@ -79,7 +69,7 @@ def generate_networks_in_dir(path, n_nodes, n_newtworks, avg_k, seed):
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    path, n_nodes, n_networks, avg_k, seed = parse_args(argv)
+    model, path, n_networks, seed, model_params = parse_config(argv)
     Path(path).mkdir(parents=True, exist_ok=True)
-    _, graph_stat = generate_networks_in_dir(path, n_nodes, n_networks, avg_k, seed)
+    _, graph_stat = generate_networks_in_dir(path, model, model_params, n_networks, seed)
     print(graph_stat.describe(percentiles=[]))
