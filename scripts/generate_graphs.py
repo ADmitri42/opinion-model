@@ -1,5 +1,4 @@
 from typing import Tuple, Dict, Any
-from enum import Enum
 import os
 import sys
 import json
@@ -37,6 +36,15 @@ def generate_networks_in_dir(path, model, model_params, n_networks, seed):
 
     networks = []
     data = []
+    config = {
+        'model': str(model),
+        'n_networks': n_networks,
+        'seed': seed,
+        'model_params': model_params
+    }
+    with open(os.path.join(path, 'config.json'), 'w') as fp:
+        json.dump(config, fp)
+
     for i, s in enumerate(tqdm(seeds)):
         G = generate_graph(
             model, model_params,
@@ -56,14 +64,6 @@ def generate_networks_in_dir(path, model, model_params, n_networks, seed):
     graph_stat = pd.DataFrame(data)
     graph_stat.to_csv(os.path.join(path, 'info.csv'))
 
-    config = {
-        'model': str(model),
-        'n_networks': n_networks,
-        'seed': seed,
-        'model_params': model_params
-    }
-    with open(os.path.join(path, 'config.json'), 'w') as fp:
-        json.dump(config, fp)
     return networks, graph_stat
 
 
@@ -71,5 +71,9 @@ if __name__ == '__main__':
     argv = sys.argv[1:]
     model, path, n_networks, seed, model_params = parse_config(argv)
     Path(path).mkdir(parents=True, exist_ok=True)
-    _, graph_stat = generate_networks_in_dir(path, model, model_params, n_networks, seed)
+    _, graph_stat = generate_networks_in_dir(
+        path, model,
+        model_params,
+        n_networks, seed
+    )
     print(graph_stat.describe(percentiles=[]))

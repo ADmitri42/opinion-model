@@ -1,8 +1,8 @@
 {
     "networks": {
-        "path": "networks/erdos-renyi/k=12"
+        "path": "networks/barabasi-alber/m=6"
     },
     "suggestability": [6, 8, 12, 16],
     "initial_probability": "np.linspace(0, 0.5, 10)",
-    "result_dir": "data/erd_ren_k12_n1000"
+    "result_dir": "data/bar_alb_k12_n2000"
 }

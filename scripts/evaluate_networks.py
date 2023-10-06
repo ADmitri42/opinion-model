@@ -1,17 +1,23 @@
-from typing import Dict, Any, Iterable, Union
+from typing import Dict, List, Any, Iterable, Tuple
 import sys
 import os
 import json
 from glob import glob
 from pathlib import Path
 import shutil
+from pprint import pprint
 
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import networkx as nx
 
-from opinion_model import balance_opinions, generate_opinions, describe_graph, OPINION_KEY, SUGGESTABILITY_KEY
+from opinion_model import (
+    balance_opinions,
+    generate_opinions,
+    describe_graph,
+    OPINION_KEY, SUGGESTABILITY_KEY
+)
 
 
 config = {
@@ -24,17 +30,18 @@ config = {
 }
 
 
-def load_config(config_path: str) -> Dict[str, any]:
+def load_config(config_path: str) -> Dict[str, Any]:
     with open(config_path) as f:
         config = json.load(f)
     for eval_field in ['suggestability', 'initial_probability']:
         if isinstance(config[eval_field], str):
             config[eval_field] = eval(config[eval_field])
         if not isinstance(config[eval_field], (list, np.ndarray)):
-            raise ValueError(f"`{eval_field}` must be list or ndarray, not {type(config[eval_field])}")
+            raise ValueError(f"`{eval_field}` must be list or ndarray, not {type(config[eval_field])}")  # noqa: E501
     return config
 
-def load_networks(path: str):
+
+def load_networks(path: str) -> List[nx.Graph]:
     all_networks = glob('*.graphml', root_dir=path)
     networks = []
     print(f'Reading {len(all_networks)} networks from directory {path}')
@@ -44,7 +51,11 @@ def load_networks(path: str):
     return networks
 
 
-def eval_on_networks(networks: Iterable[nx.Graph], suggestability: Iterable[float], initial_probability: Iterable[float]) -> pd.DataFrame:
+def eval_on_networks(
+        networks: Iterable[nx.Graph],
+        suggestability: Iterable[float],
+        initial_probability: Iterable[float]
+        ) -> pd.DataFrame:
     data = []
     for sug in suggestability:
         print(f'Evaluating suggestability={sug}')
@@ -63,7 +74,7 @@ def eval_on_networks(networks: Iterable[nx.Graph], suggestability: Iterable[floa
     return pd.DataFrame(data)
 
 
-def process_data(data: pd.DataFrame):
+def process_data(data: pd.DataFrame) -> pd.DataFrame:
     gr_data = data[['f', 'sug', 'fraction', 's1', 's2']].groupby(['sug', 'f'])
     description = gr_data.describe()
 
@@ -74,7 +85,11 @@ def process_data(data: pd.DataFrame):
     return result
 
 
-def evaluate(network_path: str, suggestability: Iterable[float], initial_probability: Iterable[float]):
+def evaluate(
+        network_path: str,
+        suggestability: Iterable[float],
+        initial_probability: Iterable[float]
+        ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     networks = load_networks(network_path)
     df = eval_on_networks(networks, suggestability, initial_probability)
     processed_data = process_data(df)
@@ -107,7 +122,14 @@ if __name__ == '__main__':
     path.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(config_path, os.path.join(result_dir, 'config.json'))
 
-    data, processed_data = evaluate(network_path, suggestability, initial_probability)
+    print('Config: ', end='')
+    pprint(config)
+
+    data, processed_data = evaluate(
+        network_path,
+        suggestability,
+        initial_probability
+    )
 
     print(f'Saving data into {result_dir}')
     data.to_csv(os.path.join(result_dir, 'raw.csv'))

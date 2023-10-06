@@ -1,10 +1,10 @@
 {
-    "model": "erdos-renyi",
-    "path": "networks/erdos-renyi/k=16",
+    "model": "barabasi-alber",
+    "path": "networks/barabasi-alber/m=6",
     "n_networks": 2000,
     "seed": 20160,
     "model_params": {
         "n": 1000,
-        "avg_k": 16.017
+        "m": 6
     }
 }
