@@ -1,0 +1,8 @@
+{
+    "networks": {
+        "path": "networks/random-regular-graph/d=12"
+    },
+    "suggestability": [6, 8, 12, 16],
+    "initial_probability": "np.linspace(0, 0.5, 10)",
+    "result_dir": "data/random_regular_k12_n2000"
+}

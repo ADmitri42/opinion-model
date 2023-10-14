@@ -19,6 +19,8 @@ from opinion_model import (
     OPINION_KEY, SUGGESTABILITY_KEY
 )
 
+from opinion_model.utils import fraction_of_opinion
+
 
 config = {
     "networks": {
@@ -64,9 +66,10 @@ def eval_on_networks(
                 opinions = generate_opinions(G, f)
                 nx.set_node_attributes(G, opinions, name=OPINION_KEY)
                 nx.set_node_attributes(G, sug, name=SUGGESTABILITY_KEY)
-                G, stable, n_steps = balance_opinions(G)
-                d = describe_graph(G)
+                G_b, stable, n_steps = balance_opinions(G)
+                d = describe_graph(G_b)
                 d['f'] = f
+                d['real_f'] = fraction_of_opinion(G)
                 d['sug'] = sug
                 d['stable'] = stable
                 d['steps'] = n_steps

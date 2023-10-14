@@ -1,0 +1,10 @@
+{
+    "model": "random-regular-graph",
+    "path": "networks/random-regular-graph/d=12",
+    "n_networks": 2000,
+    "seed": 20160,
+    "model_params": {
+        "n": 1000,
+        "d": 12
+    }
+}

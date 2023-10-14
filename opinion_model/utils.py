@@ -88,9 +88,11 @@ def generate_opinions(G: nx.Graph, minus_opinion_prob: float):
     )
     return opinions
 
+
 def average_k(G: nx.Graph) -> float:
     " Calculates average number of neighbours "
     return np.mean([d for _, d in G.degree()])
+
 
 def first_second_clusters(G: nx.Graph, opinion: Opinion = Opinion.minus_sigma) -> Tuple[int, int]:
     " Calculates relative sizes of the first and second clusters with opinion "
@@ -101,12 +103,14 @@ def first_second_clusters(G: nx.Graph, opinion: Opinion = Opinion.minus_sigma) -
     s1, s2 = sorted(clusters + [0, 0], reverse=True)[:2]
     return s1 / n_nodes, s2 / n_nodes
 
+
 def fraction_of_opinion(G: nx.Graph, opinion: Opinion = Opinion.minus_sigma) -> float:
     opinions = nx.get_node_attributes(G, name=OPINION_KEY)
     n_nodes = len(opinions)
     n, o = map(np.asarray, zip(*opinions.items()))
     # len(n[o == opinion]) / n_nodes
     return (o == opinion).sum() / n_nodes
+
 
 def describe_graph(G: nx.Graph, opinion: Opinion = Opinion.minus_sigma, as_dict: bool = False) -> Union[pd.Series, dict]:
     s1, s2 = first_second_clusters(G, opinion)
@@ -120,5 +124,5 @@ def describe_graph(G: nx.Graph, opinion: Opinion = Opinion.minus_sigma, as_dict:
     }
     if not as_dict:
         data = pd.Series(data)
-    
+
     return data
