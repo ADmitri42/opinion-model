@@ -19,7 +19,7 @@ from opinion_model import (
     OPINION_KEY, SUGGESTABILITY_KEY
 )
 
-from opinion_model.utils import fraction_of_opinion
+from opinion_model.utils import fraction_of_opinion, read_graph
 
 
 config = {
@@ -45,11 +45,11 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 def load_networks(path: str) -> List[nx.Graph]:
     all_networks = glob('*.graphml', root_dir=path)
+    all_networks += glob('*.gexf', root_dir=path)
     networks = []
     print(f'Reading {len(all_networks)} networks from directory {path}')
     for network_file in tqdm(all_networks):
-        # print(os.path.join(path, network_file))
-        networks.append(nx.read_graphml(os.path.join(path, network_file)))
+        networks.append(read_graph(os.path.join(path, network_file)))
     return networks
 
 

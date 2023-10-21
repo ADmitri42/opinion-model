@@ -1,0 +1,14 @@
+{
+    "model": "stochastic-block-model",
+    "path": "networks/stochastic-block-model/k=8",
+    "n_networks": 2000,
+    "seed": 20160,
+    "one_component": true,
+    "reduce": true,
+    "model_params": {
+        "avg_k": 8.08,
+        "lambda": 10,
+        "n": 10,
+        "s": 100
+    }
+}
