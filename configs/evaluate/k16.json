@@ -2,7 +2,8 @@
     "networks": {
         "path": "networks/erdos-renyi/k=16"
     },
-    "suggestability": [8, 12, 16, 20],
+    "suggestability": [1, 8, 12, 16, 20],
     "initial_probability": "np.linspace(0, 0.5, 10)",
-    "result_dir": "data/erd_ren_k16_n1000"
+    "result_dir": "data/compact_erd_ren_k16_n2000",
+    "compact": true
 }

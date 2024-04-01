@@ -4,8 +4,10 @@ import os
 import json
 from glob import glob
 from pathlib import Path
+from itertools import product
 import shutil
 from pprint import pprint
+
 
 from tqdm import tqdm
 import numpy as np
@@ -14,32 +16,30 @@ import networkx as nx
 
 from opinion_model import (
     balance_opinions,
-    generate_opinions,
     describe_graph,
-    OPINION_KEY, SUGGESTABILITY_KEY
+    OPINION_KEY, SUGGESTABILITY_KEY, BYZANTINE_COEF_KEY
 )
 
-from opinion_model.utils import fraction_of_opinion, read_graph
-
-
-config = {
-    "networks": {
-        "path": "networks/k=4"
-    },
-    "suggestability": [4, 6, 8, 10],
-    "initial_probability": "np.linspace(0, 0.5, 10)",
-    "result_dir": "data/erd_ren_n1000_k4"
-}
+from opinion_model.utils import (
+    fraction_of_opinion,
+    generate_opinions,
+    generate_byzantines,
+    read_graph
+)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
     with open(config_path) as f:
         config = json.load(f)
-    for eval_field in ['suggestability', 'initial_probability']:
+    if 'byzantine_prob' not in config:
+        config['byzantine_prob'] = [0]
+    for eval_field in ['suggestability', 'initial_probability', 'byzantine_prob']:
         if isinstance(config[eval_field], str):
             config[eval_field] = eval(config[eval_field])
         if not isinstance(config[eval_field], (list, np.ndarray)):
             raise ValueError(f"`{eval_field}` must be list or ndarray, not {type(config[eval_field])}")  # noqa: E501
+    config['compact'] = config.get('compact', False)
+    config['sequential'] = config.get('sequential', True)
     return config
 
 
@@ -56,33 +56,50 @@ def load_networks(path: str) -> List[nx.Graph]:
 def eval_on_networks(
         networks: Iterable[nx.Graph],
         suggestability: Iterable[float],
-        initial_probability: Iterable[float]
+        initial_probability: Iterable[float],
+        byzantine_prob: Iterable[float],
+        compact: bool = False,
+        sequential: bool = True,
+        seed=None
         ) -> pd.DataFrame:
     data = []
-    for sug in suggestability:
-        print(f'Evaluating suggestability={sug}')
-        for f in tqdm(initial_probability):
-            for G in networks:
-                opinions = generate_opinions(G, f)
-                nx.set_node_attributes(G, opinions, name=OPINION_KEY)
-                nx.set_node_attributes(G, sug, name=SUGGESTABILITY_KEY)
-                G_b, stable, n_steps = balance_opinions(G)
-                d = describe_graph(G_b)
-                d['f'] = f
-                d['real_f'] = fraction_of_opinion(G)
-                d['sug'] = sug
-                d['stable'] = stable
-                d['steps'] = n_steps
-                data.append(d)
+    rng = np.random.default_rng(seed)
+    for sug, f, byz_prob in tqdm(product(suggestability, initial_probability, byzantine_prob), total=len(suggestability) * len(initial_probability) * len(byzantine_prob)):
+        for G, generator in zip(networks, rng.spawn(len(networks))):
+            seed1, seed2, seed3 = generator.spawn(3)
+            opinions = generate_opinions(G, f, compact=compact, seed=seed1)
+            byzantine_coef = generate_byzantines(G, byz_prob, seed=seed2)
+            nx.set_node_attributes(G, opinions, name=OPINION_KEY)
+            nx.set_node_attributes(G, sug, name=SUGGESTABILITY_KEY)
+            nx.set_node_attributes(G, byzantine_coef, name=BYZANTINE_COEF_KEY)
+            evolved_graph, stable, n_steps, persistences = balance_opinions(G, sequential=sequential, seed=seed3, max_iter=100)
+            d = describe_graph(evolved_graph, persistences=persistences, initial_strategies=opinions)
+            d['f'] = f
+            d['byzantine_prob'] = byz_prob
+            d['real_f'] = fraction_of_opinion(G)
+            d['sug'] = sug
+            d['stable'] = stable
+            d['steps'] = n_steps
+            data.append(d)
     return pd.DataFrame(data)
 
 
 def process_data(data: pd.DataFrame) -> pd.DataFrame:
-    gr_data = data[['f', 'sug', 'fraction', 's1', 's2']].groupby(['sug', 'f'])
+    columns = ['f', 'sug', 'byzantine_prob', 'fraction', 'n_minus_components', 'stable', 's1', 's2']
+    calc_columns = ['fraction', 'n_minus_components', 's1', 's2', 'stable']
+    additional_columns = [
+        's1_persistence', 's2_persistence',
+        's1_change_op', 's2_change_op'
+    ]
+    for c in additional_columns:
+        if c in data.columns:
+            columns.append(c)
+            calc_columns.append(c)
+    gr_data = data[columns].groupby(['sug', 'f', 'byzantine_prob'])
     description = gr_data.describe()
 
     result = pd.DataFrame(index=description.index)
-    for col in ['fraction', 's1', 's2']:
+    for col in calc_columns:
         result[f'{col}_mean'] = gr_data[col].mean()
         result[f'{col}_std'] = gr_data[col].std()
     return result
@@ -91,10 +108,14 @@ def process_data(data: pd.DataFrame) -> pd.DataFrame:
 def evaluate(
         network_path: str,
         suggestability: Iterable[float],
-        initial_probability: Iterable[float]
+        initial_probability: Iterable[float],
+        byzantine_prob: Iterable[float],
+        compact: bool,
+        sequential: bool,
+        seed=None
         ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     networks = load_networks(network_path)
-    df = eval_on_networks(networks, suggestability, initial_probability)
+    df = eval_on_networks(networks, suggestability, initial_probability, byzantine_prob, compact, sequential, seed)
     processed_data = process_data(df)
     return df, processed_data
 
@@ -109,11 +130,16 @@ if __name__ == '__main__':
     else:
         config_path = argv[0]
     overwrite = len(argv) == 2 and argv[1].lower() == 'y'
+
     config = load_config(config_path)
     network_path = config['networks']['path']
     result_dir = config['result_dir']
     suggestability = config['suggestability']
     initial_probability = config['initial_probability']
+    compact = config['compact']
+    sequential = config['sequential']
+    byzantine_prob = config['byzantine_prob']
+    seed = config.get('seed', 42)
 
     path = Path(result_dir)
     if path.exists():
@@ -131,7 +157,11 @@ if __name__ == '__main__':
     data, processed_data = evaluate(
         network_path,
         suggestability,
-        initial_probability
+        initial_probability,
+        byzantine_prob,
+        compact,
+        sequential,
+        seed=np.random.default_rng(seed=seed)
     )
 
     print(f'Saving data into {result_dir}')

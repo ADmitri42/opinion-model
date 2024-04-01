@@ -1,11 +1,13 @@
-from typing import Tuple, Union, Dict, Any
+from typing import Tuple, Union, Dict, List, Any, Optional, Set
 from enum import Enum
+from itertools import chain
 import numpy as np
 import pandas as pd
 import networkx as nx
 
 from .constants import OPINION_KEY, SUGGESTABILITY_KEY
 from .opinion import Opinion
+from ._helpers import _opinions_to_array
 
 
 class Model(Enum):
@@ -28,7 +30,7 @@ def write_graph(G: nx.Graph, filename: str) -> str:
 def read_graph(filepath: str, **argv) -> nx.Graph:
     if filepath.endswith('.graphml'):
         return nx.read_graphml(filepath, **argv)
-    elif filepath.endswith('.gexf'):
+    if filepath.endswith('.gexf'):
         return nx.read_gexf(filepath, **argv)
 
     raise NotImplementedError('Unknown fileformat')
@@ -120,11 +122,12 @@ def generate_graph(
         raise ValueError(f'Unknown model {model}')
 
     G = graph_gen_func(**model_params, **kwargs)
-    if one_component and reduce_components:
+    if one_component:
         if reduce:
             reduce_components(G)
         else:
             G = G.subgraph(list(nx.connected_components(G))[0])
+    G = nx.convert_node_labels_to_integers(G)
 
     opinions = generate_opinions(G, minus_opinion_prob)
     nx.set_node_attributes(G, opinions, name=opinion_key)
@@ -132,39 +135,166 @@ def generate_graph(
     return G
 
 
-def generate_opinions(G: nx.Graph, minus_opinion_prob: float):
-    nodes = list(G.nodes)
+def generate_opinions(
+        graph: nx.Graph, minus_opinion_prob: float,
+        seed=None, compact: bool = False,
+        as_array: bool = False) -> Union[Dict[Union[str, int], Opinion], np.ndarray]:
+    """ Generates opinions for graph with fixed probability
+
+    Parameters:
+    -----------
+    graph : networkx.Graph
+        graph for which to generate opinions
+    minus_opinion_prob : float
+        probability of being \sigma_-
+    seed
+        seed for the generator
+    compact : bool
+        if True, opinions will form one big cluster
+    """
+    rng = np.random.default_rng(seed)
+    if compact:
+        return generate_compact_opinions(graph, minus_opinion_prob, rng, as_array)
+    nodes = list(graph.nodes)
+    if minus_opinion_prob <= 1e-15:
+        if as_array:
+            return np.ones(shape=len(nodes), dtype=np.int64)
+        return dict(zip(nodes, [Opinion.plus_sigma]*len(nodes)))
+    n_minus_op = int(rng.choice(
+        (
+            np.ceil(len(nodes) * minus_opinion_prob),
+            np.floor(len(nodes) * minus_opinion_prob)
+        )
+    ))
+    n_plus_op = len(nodes) - n_minus_op
+    all_opinions = np.fromiter(
+        chain(
+            (Opinion.minus_sigma for _ in range(n_minus_op)),
+            (Opinion.plus_sigma for _ in range(n_plus_op))
+        ),
+        dtype=np.int64
+    )
+    rng.shuffle(all_opinions)
+    if as_array:
+        return all_opinions
     opinions = dict(
         zip(
             nodes,
-            np.random.choice(
-                [Opinion.minus_sigma, Opinion.plus_sigma],
-                size=len(nodes),
-                p=(minus_opinion_prob, 1-minus_opinion_prob)
-            )
+            all_opinions
         )
     )
     return opinions
 
 
-def average_k(G: nx.Graph) -> float:
+def generate_byzantines(
+        graph: nx.Graph, byzanine_prob: float,
+        seed=None, compact: bool = False) -> Dict[Union[str, int], Opinion]:
+    """ Generates opinions for graph with fixed probability
+
+    Parameters:
+    -----------
+    graph : networkx.Graph
+        graph for which to generate opinions
+    minus_opinion_prob : float
+        probability of being \sigma_-
+    seed
+        seed for the generator
+    compact : bool
+        if True, opinions will form one big cluster
+    """
+    rng = np.random.default_rng(seed)
+    # if compact:
+    #     return generate_compact_opinions(graph, minus_opinion_prob, rng)
+    nodes = list(graph.nodes)
+    if byzanine_prob <= 1e-15:
+        return dict(zip(nodes, [1]*len(nodes)))
+    byzantine_coef = dict(
+        zip(
+            nodes,
+            rng.choice(
+                [-1, 1],
+                size=len(nodes),
+                p=(byzanine_prob, 1-byzanine_prob)
+            )
+        )
+    )
+    return byzantine_coef
+
+
+def generate_compact_opinions(
+        graph: nx.Graph, threshold: float,
+        rng: np.random.Generator, as_array: bool = False) -> Dict[Union[str, int], Opinion]:
+    n_iters = int(len(graph) * threshold) + 1
+
+    first_node = rng.choice(graph.nodes)
+    cluster_nodes = set((first_node, ))
+    neighbors = set(graph.neighbors(first_node))
+
+    for _ in range(n_iters):
+        current_node = rng.choice(list(neighbors))
+        neighbors.remove(current_node)
+        cluster_nodes.add(current_node)
+        neighbors = (neighbors | set(graph.neighbors(current_node))) - cluster_nodes
+        if len(cluster_nodes) / len(graph) >= threshold:
+            break
+    if as_array:
+        return np.fromiter(
+            (Opinion.minus_sigma if node in cluster_nodes else Opinion.plus_sigma for node in graph.nodes),
+            dtype=np.int64
+        )
+    new_opinions = {
+        i: Opinion.minus_sigma if i in cluster_nodes else Opinion.plus_sigma
+        for i in graph.nodes
+    }
+    return new_opinions
+
+
+def average_k(graph: nx.Graph) -> float:
     " Calculates average number of neighbours "
-    return np.mean([d for _, d in G.degree()])
+    return np.mean([d for _, d in graph.degree()])
 
 
-def first_second_clusters(
+def number_of_connected_components(
+        graph: nx.Graph,
+        opinion: Opinion = Opinion.minus_sigma
+        ):
+    opinions = nx.get_node_attributes(graph, name=OPINION_KEY)
+    n, o = map(np.asarray, zip(*opinions.items()))
+    return nx.number_connected_components(
+        graph.subgraph(n[o == opinion])
+    )
+
+
+def get_two_largest_clusters(
         G: nx.Graph,
         opinion: Opinion = Opinion.minus_sigma
-        ) -> Tuple[int, int]:
-    " Calculates relative sizes of the first and second clusters with opinion "
+        ) -> Tuple[set, set, List[int]]:
+    " Get the secong largest cluster with opinion "
     opinions = nx.get_node_attributes(G, name=OPINION_KEY)
-    n_nodes = len(opinions)
     n, o = map(np.asarray, zip(*opinions.items()))
-    clusters = [
-        len(g) for g in nx.connected_components(G.subgraph(n[o == opinion]))
-    ]
-    s1, s2 = sorted(clusters + [0, 0], reverse=True)[:2]
-    return s1 / n_nodes, s2 / n_nodes
+    clusters = sorted(
+        nx.connected_components(G.subgraph(n[o == opinion])),
+        key=len, reverse=True
+    )
+    sizes = [len(c) for c in clusters]
+    if len(clusters) == 0:
+        return [set(), set(), sizes]
+    if len(clusters) == 1:
+        return [clusters[0], set(), sizes]
+    return clusters[0], clusters[1], sizes
+
+
+def first_second_cluster_sizes(
+        G: nx.Graph,
+        opinion: Opinion = Opinion.minus_sigma,
+        c1: set = None,
+        c2: set = None
+        ) -> Tuple[float, float]:
+    " Calculates relative sizes of the first and second clusters with opinion "
+    n_nodes = len(G)
+    if c1 is None or c2 is None:
+        c1, c2, _ = get_two_largest_clusters(G, opinion=opinion)
+    return len(c1) / n_nodes, len(c2) / n_nodes
 
 
 def fraction_of_opinion(
@@ -173,25 +303,64 @@ def fraction_of_opinion(
         ) -> float:
     opinions = nx.get_node_attributes(G, name=OPINION_KEY)
     n_nodes = len(opinions)
-    n, o = map(np.asarray, zip(*opinions.items()))
+    _, o = map(np.asarray, zip(*opinions.items()))
     # len(n[o == opinion]) / n_nodes
     return (o == opinion).sum() / n_nodes
 
 
+def persistence_on_nodes(
+        graph: nx.Graph,
+        persistences: np.ndarray[float],
+        nodes: List[Union[str, int]]) -> float:
+    " Persistence of the opinions on nodes "
+    if not nodes:
+        return None
+    graph_nodes = np.asarray(sorted(map(int, graph.nodes)))
+    nodes = np.asarray(nodes).astype(np.integer)
+    return persistences[np.where(np.isin(nodes, graph_nodes))].mean()
+
+
+def changed_strategy(
+        graph: nx.Graph,
+        init_strategy: Dict[str, Opinion],
+        nodes: List[Union[str, int]] = None
+        ) -> float:
+    if not nodes:
+        return None
+    graph_nodes = np.asarray(sorted(map(int, graph.nodes)))
+    nodes = np.asarray(nodes).astype(np.integer)
+    old_opinions = _opinions_to_array(init_strategy)
+    new_opinions = _opinions_to_array(nx.get_node_attributes(graph, OPINION_KEY))
+    # raise Exception()
+    return (old_opinions != new_opinions).astype(int)[np.where(np.isin(nodes, graph_nodes))].mean()
+
+
 def describe_graph(
-        G: nx.Graph,
+        graph: nx.Graph,
+        *,
+        persistences: Optional[np.ndarray] = None,
+        initial_strategies: Dict[str, Opinion] = None,
         opinion: Opinion = Opinion.minus_sigma,
         as_dict: bool = False
         ) -> Union[pd.Series, dict]:
-    s1, s2 = first_second_clusters(G, opinion)
+    c1, c2, sizes = get_two_largest_clusters(graph, opinion=opinion)
+    s1, s2 = first_second_cluster_sizes(graph, opinion, c1=c1, c2=c2)
     data = {
-        "nodes": len(G),
-        "n_components": nx.number_connected_components(G),
-        "avg_k": average_k(G),
-        "fraction": fraction_of_opinion(G, opinion),
+        "nodes": len(graph),
+        "n_components": nx.number_connected_components(graph),
+        "n_minus_components": number_of_connected_components(graph, opinion=opinion),
+        "avg_k": average_k(graph),
+        "fraction": fraction_of_opinion(graph, opinion),
         "s1": s1,
-        "s2": s2
+        "s2": s2,
+        "op_clust_sizes": sizes,
     }
+    if persistences is not None:
+        data['s1_persistence'] = persistence_on_nodes(graph, persistences, list(c1))
+        data['s2_persistence'] = persistence_on_nodes(graph, persistences, list(c2))
+    if initial_strategies:
+        data['s1_change_op'] = changed_strategy(graph, initial_strategies, list(c1))
+        data['s2_change_op'] = changed_strategy(graph, initial_strategies, list(c2))
     if not as_dict:
         data = pd.Series(data)
 

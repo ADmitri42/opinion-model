@@ -1,0 +1,9 @@
+{
+    "networks": {
+        "path": "networks/erdos-renyi/k=8"
+    },
+    "suggestability": [4, 6, 8, 10],
+    "initial_probability": "np.linspace(0, 0.5, 10)",
+    "result_dir": "data/compact/compact_erd_ren_k8_n2000",
+    "compact": true
+}

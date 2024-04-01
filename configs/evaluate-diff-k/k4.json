@@ -1,0 +1,11 @@
+{
+    "networks": {
+        "path": "networks/erdos-renyi/k=4"
+    },
+    "suggestability": [1, 4, 8, 12, 16],
+    "initial_probability": [0.28],
+    "result_dir": "data/diff_k/k4",
+    "compact": false,
+    "sequential": false,
+    "seed": 3421
+}

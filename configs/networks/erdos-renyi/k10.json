@@ -1,0 +1,10 @@
+{
+    "model": "erdos-renyi",
+    "path": "networks/erdos-renyi/k=10",
+    "n_networks": 2000,
+    "seed": 20160,
+    "model_params": {
+        "n": 1000,
+        "avg_k": 10.01
+    }
+}

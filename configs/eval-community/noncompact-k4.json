@@ -1,0 +1,9 @@
+{
+    "networks": {
+        "path": "networks/erdos-renyi/k=4"
+    },
+    "community_coefs": [1, 2, 5, 10, 20, 30],
+    "initial_probability": "np.linspace(0, 1, 10)",
+    "result_dir": "data/community-effect/compact_erd_ren_k4_n2000",
+    "compact": true
+}

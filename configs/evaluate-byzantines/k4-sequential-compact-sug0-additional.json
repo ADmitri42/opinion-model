@@ -1,0 +1,11 @@
+{
+    "networks": {
+        "path": "networks/erdos-renyi/k=4"
+    },
+    "suggestability": [0, 1],
+    "initial_probability": "np.linspace(0, 1, 20)",
+    "byzantine_prob": [0.2, 0.3],
+    "result_dir": "data/byzantine/compact_sequential_erd_ren_k4_n2000_over_f_sug0_ADDITIONAL",
+    "compact": true,
+    "sequential": true
+}
