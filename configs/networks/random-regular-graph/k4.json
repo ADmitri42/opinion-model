@@ -3,6 +3,7 @@
     "path": "networks/random-regular-graph/d=4",
     "n_networks": 2000,
     "seed": 20160,
+    "reduce": true,
     "model_params": {
         "n": 1000,
         "d": 4
